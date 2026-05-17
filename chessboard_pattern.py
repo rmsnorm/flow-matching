@@ -5,6 +5,7 @@ import jax
 import flax.linen as nn
 import optax
 import logging
+import matplotlib.animation as animation
 
 # Set up logging configuration
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -132,6 +133,32 @@ def plot_flow_trajectories(trajectories, num_plot=150):
     plt.grid(True)
     plt.show()
 
+def animate_flow_trajectories(trajectories, num_plot=1000, filename="flow_animation.gif"):
+    """Creates and saves an animation of points flowing through the vector field."""
+    logging.info(f"Generating flow animation with {num_plot} particles...")
+    fig, ax = plt.subplots(figsize=(6, 6))
+    
+    steps, samples, dims = trajectories.shape
+    num_plot = min(num_plot, samples)
+    
+    ax.set_xlim(X_MIN, X_MAX)
+    ax.set_ylim(Y_MIN, Y_MAX)
+    ax.set_title("Flow Matching: Noise to Chessboard")
+    ax.grid(True)
+    
+    # Initialize scatter plot
+    scatter = ax.scatter(trajectories[0, :num_plot, 0], trajectories[0, :num_plot, 1], alpha=0.5, s=5, c='purple')
+    
+    def update(frame):
+        scatter.set_offsets(trajectories[frame, :num_plot])
+        ax.set_title(f"Flow Matching: Time Step {frame}/{steps-1}")
+        return scatter,
+        
+    ani = animation.FuncAnimation(fig, update, frames=steps, interval=50, blit=True)
+    ani.save(filename, writer='pillow', fps=20)
+    logging.info(f"Animation saved to {filename}")
+    plt.close(fig)
+
 # Modular Helper Functions for Training and Sampling Flow Models
 
 def initialize_model(vector_field, key):
@@ -156,21 +183,25 @@ def train_flow_matching(train_step, params, opt_state, key, num_iters=20000, bat
     logging.info("Training completed!")
     return params, opt_state
 
-def sample_and_plot(vector_field, params, key, num_samples=10000, h=0.01, num_steps=100):
-    """Generates novel points from the flow model and plots them."""
+def sample_and_plot(vector_field, params, key, num_samples=10000, h=0.01, num_steps=100, generate_animation=False):
+    """Generates novel points from the trained flow model and plots them."""
     vector_field_bound = vector_field.bind(params)
     
-    # Generate new samples using the flow model
+    # Generate new samples using the trained flow model!
     x_init = jax.random.normal(key, shape=(num_samples, 2))
     trajectories = get_trajectory(vector_field_bound, x_init, h=h, num_steps=num_steps)
     final_samples = trajectories[-1]
     
-    # 1. Plot the flow trajectories
+    # 1. Plot the actual flow trajectories
     logging.info("Plotting flow trajectories...")
     plot_flow_trajectories(trajectories, num_plot=150)
     
-    # 2. Plot the generated samples
-    logging.info("Plotting generated samples...")
+    # 2. Optionally create an animation
+    if generate_animation:
+        animate_flow_trajectories(trajectories, num_plot=2000, filename="flow_animation.gif")
+        
+    # 3. Plot the generated chessboard samples!
+    logging.info("Plotting final generated chessboard samples...")
     plt.figure(figsize=(6, 6))
     plt.scatter(final_samples[:, 0], final_samples[:, 1], alpha=0.5, s=2, c='purple')
     plt.title("Generated Samples from Flow Matching")
@@ -186,8 +217,11 @@ if __name__ == "__main__":
     key = jax.random.PRNGKey(seed)
     
     # 2. Instantiate Model and Optimizer
-    vector_field = NeuralNet(128, 4)
-    optimizer = optax.adamw(learning_rate=1e-3, weight_decay=1e-3)
+    num_iters = 20000
+    # Swap to the more advanced FlowMatchingNet (you can easily revert to NeuralNet here)
+    vector_field = FlowMatchingNet(64, 3)
+    schedule = optax.cosine_decay_schedule(init_value=1e-3, decay_steps=num_iters)
+    optimizer = optax.adamw(learning_rate=schedule, weight_decay=1e-3)
     
     # 3. Create JIT-compiled training function
     train_step = make_train_step(vector_field, optimizer)
@@ -201,13 +235,13 @@ if __name__ == "__main__":
     x = jax.random.normal(key, shape=(1, 2))
     trajectory = get_trajectory(vector_field_bound, x, h=0.05, num_steps=20)
     logging.info(f"Initial sample trajectory shape: {trajectory.shape}")
-    sample_and_plot(vector_field, params, key, num_samples=10000)
+    sample_and_plot(vector_field, params, key, num_samples=10000, h=0.05, num_steps=20)
     
     # 6. Train the Flow Matching Model
     train_key, sample_key = jax.random.split(key)
-    params, opt_state = train_flow_matching(train_step, params, opt_state, train_key, num_iters=20000, batch_size=256)
+    params, opt_state = train_flow_matching(train_step, params, opt_state, train_key, num_iters=num_iters, batch_size=1024)
     
-    # 7. Sample and Plot Trained Results
-    sample_and_plot(vector_field, params, sample_key, num_samples=10000)
+    # 7. Sample and Plot Trained Results (smoother integration for animation)
+    sample_and_plot(vector_field, params, sample_key, num_samples=10000, h=0.01, num_steps=100, generate_animation=True)
 
 
