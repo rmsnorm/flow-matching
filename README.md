@@ -1,0 +1,1 @@
+This repo records my learnings of the flow matching and diffusion models area. I'm mostly learning from the very beginner friendly lecture notes here: `https://diffusion.csail.mit.edu/2026/docs/lecture_notes.pdf and the MIT course video lectures here: https://diffusion.csail.mit.edu/2026/index.html
